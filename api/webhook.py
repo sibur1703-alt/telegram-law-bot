@@ -5,7 +5,6 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler
 from groq import Groq
 
-
 # ---- Конфиг ----
 
 BASE_DIR = os.path.dirname(__file__)
@@ -25,21 +24,20 @@ try:
 except Exception:
     BILLS = []
 
-
 BILL_RE = re.compile(r"(\d{5,}-\d+)")
 
 
 # ---- Утилиты ----
 
 def clean_telegram_formatting(text: str) -> str:
-    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-    text = re.sub(r'\*(.*?)\*', r'\1', text)
-    text = re.sub(r'__(.*?)__', r'\1', text)
-    text = re.sub(r'_(.*?)_', r'\1', text)
-    text = re.sub(r'`(.*?)`', r'\1', text)
-    text = re.sub(r'~(.*?)~', r'\1', text)
-    text = re.sub(r'\|\|(.*?)\|\|', r'\1', text)
-    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"\*(.*?)\*", r"\1", text)
+    text = re.sub(r"__(.*?)__", r"\1", text)
+    text = re.sub(r"_(.*?)_", r"\1", text)
+    text = re.sub(r"`(.*?)`", r"\1", text)
+    text = re.sub(r"~(.*?)~", r"\1", text)
+    text = re.sub(r"\|\|(.*?)\|\|", r"\1", text)
+    text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)
     return text
 
 
@@ -110,33 +108,23 @@ def clean_title(title: str) -> str:
 
 
 def format_date(date_str: str) -> str:
-    """
-    Пытается привести дату к формату DD.MM.YYYY.
-    Если дата в формате YYYY-MM-DD или ISO, переворачиваем.
-    """
+    """Приводит дату к формату DD.MM.YYYY, если это возможно."""
     if not date_str:
         return ""
-    
     date_str = date_str.strip()
-    
-    # если уже DD.MM.YYYY
-    if re.match(r'\d{2}\.\d{2}\.\d{4}', date_str):
+
+    if re.match(r"\d{2}\.\d{2}\.\d{4}", date_str):
         return date_str
-    
-    # если YYYY-MM-DD или похожее
-    m = re.match(r'(\d{4})-(\d{2})-(\d{2})', date_str)
+
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", date_str)
     if m:
         year, month, day = m.groups()
         return f"{day}.{month}.{year}"
-    
+
     return date_str
 
 
 def get_bill_date(row: dict) -> str:
-    """
-    Ищет дату регистрации/публикации закона в JSON.
-    Возвращает отформатированную дату или пустую строку.
-    """
     date_fields = [
         "registration_date",
         "date",
@@ -144,19 +132,14 @@ def get_bill_date(row: dict) -> str:
         "introductionDate",
         "created_date",
     ]
-    
     for field in date_fields:
         date_val = row.get(field)
         if date_val:
             return format_date(str(date_val))
-    
     return ""
 
 
 def make_short_info(row: dict, max_len: int = 200) -> str:
-    """
-    Нормальное название + укороченное описание.
-    """
     title = clean_title(row.get("title") or "")
     desc = (row.get("description") or "").strip()
 
@@ -276,6 +259,7 @@ def call_llama(prompt: str, bill_number: str) -> str:
 
 def send_telegram_message(chat_id: int, text: str, reply_markup: dict | None = None) -> None:
     if not TELEGRAM_TOKEN:
+        print("NO TELEGRAM_TOKEN")
         return
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -295,9 +279,11 @@ def send_telegram_message(chat_id: int, text: str, reply_markup: dict | None = N
         method="POST",
     )
     try:
-        urllib.request.urlopen(req, timeout=20)
-    except Exception:
-        pass
+        resp = urllib.request.urlopen(req, timeout=20)
+        body = resp.read().decode("utf-8", errors="ignore")
+        print("TG RESPONSE:", body)
+    except Exception as e:
+        print("TG ERROR:", e)
 
 
 def answer_callback_query(callback_query_id: str) -> None:
@@ -346,7 +332,7 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(b"ok")
             return
 
-        # ---- callback_query от inline‑кнопок ----
+        # callback_query от inline‑кнопок
         if "callback_query" in update:
             cq = update["callback_query"]
             data = cq.get("data") or ""
@@ -370,7 +356,7 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(b"ok")
             return
 
-        # ---- обычное сообщение ----
+        # обычное сообщение
         message = update.get("message") or update.get("edited_message")
         if not message:
             self.send_response(200)
@@ -402,8 +388,7 @@ class handler(BaseHTTPRequestHandler):
             )
             send_telegram_message(ADMIN_ID, admin_text)
 
-        # ---- команды ----
-
+        # команды
         if text.startswith("/start"):
             reply_text = (
                 "Привет! Я объясняю законопроекты Госдумы простым языком.\n\n"
@@ -450,18 +435,16 @@ class handler(BaseHTTPRequestHandler):
                 if not rows:
                     reply_text = (
                         "Не смог распознать номер законопроекта и ничего не нашёл по этому запросу 🤷‍♂️\n"
-                        "Попробуй убрать окончание слова, например не полиция,а полиц, так мы расширим поиск."
+                        "Попробуй убрать окончание слова, например не полиция, а полиц, так мы расширим поиск."
                     )
                     send_telegram_message(chat_id, reply_text)
                 else:
-                    # сообщение‑заглушка
                     wait_text = (
                         "Секунду, подбираю подходящие законопроекты… "
                         "список появится ниже в течение 10–15 секунд 🙂"
                     )
                     send_telegram_message(chat_id, wait_text)
 
-                    # одно сообщение + одна кнопка на каждый законопроект
                     for row in rows:
                         bill_num = (
                             row.get("bill_number")
@@ -475,7 +458,6 @@ class handler(BaseHTTPRequestHandler):
 
                         msg_text = f"• {short_info}"
 
-                        # формируем текст кнопки с датой
                         if bill_date:
                             button_text = f"Расшифровать № {bill_num_str} (опубликован {bill_date})"
                         else:
