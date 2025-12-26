@@ -1,14 +1,17 @@
-print("IMPORT webhook.py")
 import json
 import os
 import urllib.request
 import urllib.error
 
+print("IMPORT webhook.py")  # проверим, что модуль вообще грузится
 
 BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 
 def handler(request, response):
+    # лог самого вызова
+    print("CALL handler, method:", request.method)
+
     # 1. Хелсчек и защита от GET
     if request.method != "POST":
         response.status_code = 200
@@ -24,7 +27,9 @@ def handler(request, response):
 
     # 3. Парсим апдейт от Telegram
     try:
-        data = json.loads(request.body.decode("utf-8"))
+        raw_body = request.body
+        print("RAW BODY TYPE:", type(raw_body))
+        data = json.loads(raw_body.decode("utf-8"))
     except Exception as e:
         print("Bad JSON from Telegram:", repr(e))
         response.status_code = 200
@@ -34,14 +39,17 @@ def handler(request, response):
     print("TG update:", data)
 
     message = data.get("message") or {}
-    chat_id = message.get("chat", {}).get("id")
-    text = message.get("text", "")
+    chat = message.get("chat", {}) or {}
+    chat_id = chat.get("id")
+    text = message.get("text", "") or ""
 
-    if chat_id:
+    print("Parsed chat_id:", chat_id, "text:", repr(text))
+
+    if chat_id is not None:
         if text == "/start":
             reply = (
-                "Привет! Это тестовый ответ на /start из "
-                "Vercel‑бота. Если ты это видишь — вебхук жив."
+                "Привет! Это тестовый ответ на /start из Vercel‑бота.\n\n"
+                "Если ты это видишь — вебхук и токен настроены верно."
             )
         else:
             reply = f"Ты написал: {text}"
